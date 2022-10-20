@@ -1,0 +1,127 @@
+#include <LiquidCrystal.h>
+
+LiquidCrystal lcd(12,11,5,4,3,2);
+
+float temp, U;
+int h=13, m=10, s=15;
+char time[20];
+
+void setup()
+{
+  DDRC |= (1<<PC1);
+  
+  Serial.begin(9600);
+  
+  lcd.begin(16,2);
+  
+  timer1_init();
+}
+
+void adc_init() //adc initialization
+{
+  ADCSRA |= ((1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
+  //set division factor between system clock frequency and the input clock to the ADC =128
+  ADMUX |= (1<<REFS0); //AVcc with external capacitor at Aref pin
+  ADCSRA |= (1<<ADEN); //enable ADC
+  ADCSRA |= (1<<ADSC); //ADC start conversion
+}
+
+uint16_t read_adc(uint8_t channel) //read ADC function
+// uint8_t is „a type of unsigned integer of length 8 bits”
+{
+  ADMUX &= 0xF0; //set input A0 to A5
+  ADMUX |= channel; //select channel A0 to A5
+  ADCSRA |= (1<<ADSC); //start conversion
+  while (ADCSRA & (1<<ADSC)); //wait while adc conversion are not updated
+  return ADC; //read and return
+}
+
+void timer1_init()
+{
+  //stop interupts
+  cli();
+  
+  //stergem registrii de control
+  TCCR1A=0;
+  TCCR1B=0;
+  TCCR1C=0;
+  
+  //initializare timer counter = 0
+  TCNT1=0;
+  
+  //selectam modul de lucru CTC
+  TCCR1B |= (1<<WGM12);
+  
+  //activam registrul pentru setarea prescalerului de 1024
+  TCCR1B |= (1<<CS12) | (1<<CS10);
+  
+  //setare OCR
+  OCR1A=15625;
+  
+  //registru intrerupere
+  TIMSK1 = (1<<OCIE1A);
+  
+  //allow interrups
+  sei();
+}
+
+ISR(TIMER1_COMPA_vect)
+{
+  s++;
+  if(s==60)
+  {
+    s=0;
+    m++;
+  }
+  if(m==60)
+  {
+    h++;
+    m=0;
+    s=0;
+  }
+  if(h==24)
+  {
+   	h=0;
+  }
+}
+
+void temp_init()
+{
+  adc_init();
+  unsigned int numar_CAN=read_adc(0);
+  temp = 100*((float)numar_CAN*5/1023-1)+50;
+  
+  delay(1000);
+  
+  char temp_lcd[10];
+  if(temp >= 0)
+  {
+    lcd.setCursor(6,0);
+    utoa(temp, temp_lcd, 10);
+    strcat(temp_lcd, " C");
+    lcd.write(temp_lcd);
+  }
+  
+  Serial.print("Temp: ");
+  Serial.print(temp);
+  Serial.println(" C");
+}
+
+void lcd_set()
+{
+  lcd.setCursor(0,0);
+  lcd.write("Temp: ");
+  lcd.setCursor(0,1);
+  lcd.write("Ora: ");
+  lcd.setCursor(5,1);
+  sprintf(time, "%02d:%02d:%02d", h, m, s);
+  lcd.write(time);
+}
+
+void loop()
+{
+  temp_init();
+  lcd_set();
+  Serial.print("Ora: ");
+  Serial.println(time);
+}
